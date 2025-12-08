@@ -2,6 +2,8 @@
 
 Real-time terminal dashboard for Polymarket order books and trades.
 
+![Dashboard Preview](./image.png)
+
 ## Quick Start
 
 ```bash
