@@ -1,0 +1,48 @@
+{
+  "name": "polymarket-cli-dashboard",
+  "version": "1.0.0",
+  "description": "Real-time Polymarket order book and trades CLI dashboard",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "npm run build && node dist/index.js",
+    "dev": "ts-node src/index.ts",
+    "clean": "rm -rf dist",
+    "find-tokens": "ts-node scripts/find-tokens.ts",
+    "get-tokens": "ts-node scripts/get-market-tokens.ts",
+    "get-15min": "ts-node scripts/get-15min-market.ts"
+  },
+  "keywords": [
+    "polymarket",
+    "orderbook",
+    "cli",
+    "dashboard",
+    "websocket",
+    "trading",
+    "prediction-markets",
+    "terminal-ui",
+    "realtime"
+  ],
+  "author": "",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/yourusername/polymarket-cli-dashboard.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yourusername/polymarket-cli-dashboard/issues"
+  },
+  "homepage": "https://github.com/yourusername/polymarket-cli-dashboard#readme",
+  "dependencies": {
+    "blessed": "^0.1.81",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/blessed": "^0.1.25",
+    "@types/node": "^20.11.0",
+    "@types/ws": "^8.5.10",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.3.3"
+  }
+}
+
