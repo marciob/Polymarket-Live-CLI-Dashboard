@@ -41,7 +41,7 @@ npm run get-15min eth
 
 ## Dashboard
 
-- **Left Panel:** Recent trades (time, side, price, size, notional)
+- **Left Panel:** Recent trades (time, side, price, size, value (USDC))
 - **Right Panel:** Live order book (bids/asks with spread)
 - **Status Bar:** Connection status, market name, outcome
 

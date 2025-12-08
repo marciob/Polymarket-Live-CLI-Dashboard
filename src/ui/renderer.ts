@@ -155,7 +155,7 @@ export class DashboardUI {
     }
 
     const header =
-      "  {bold}Time          Side    Price      Size        Notional{/bold}\n" +
+      "  {bold}Time          Side    Price      Size        Value (USDC){/bold}\n" +
       "  ───────────────────────────────────────────────────────────────\n";
 
     const rows = trades.slice(0, 50).map((trade) => {
@@ -179,7 +179,7 @@ export class DashboardUI {
       return "\n  {gray-fg}Waiting for order book...{/gray-fg}";
     }
 
-    const maxLevels = 15;
+    const maxLevels = 30;
 
     // Sort asks ascending (lowest price first)
     const sortedAsks = [...orderBook.asks].sort((a, b) => a.price - b.price);

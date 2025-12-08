@@ -123,9 +123,6 @@ async function resolveTokenId(
     };
   }
   
-  console.log(`\n🔍 Detected market slug: ${slug}`);
-  console.log("📡 Fetching market data...\n");
-  
   try {
     const markets = await fetchMarketsBySlug(slug);
     
@@ -139,27 +136,6 @@ async function resolveTokenId(
     if (tokens.length === 0) {
       throw new Error(`No tokens found in market. Market may not be ready yet. Try: npm run get-tokens "${slug}"`);
     }
-    
-    console.log(`📊 Market: ${market.question || slug}`);
-    console.log(`💰 Volume: $${parseFloat(market.volume || 0).toLocaleString()}\n`);
-    
-    if (tokens.length === 1) {
-      console.log(`🎯 Monitoring: ${tokens[0].outcome} (${(tokens[0].price * 100).toFixed(1)}%)\n`);
-      return {
-        tokenId: tokens[0].token_id,
-        marketName: market.question || slug,
-        outcome: tokens[0].outcome,
-        allTokens: tokens
-      };
-    }
-    
-    // Multiple tokens - show all options
-    console.log("🎯 Available outcomes:");
-    tokens.forEach((token, i) => {
-      const price = (token.price * 100).toFixed(1);
-      const marker = i === 0 ? " ← Default" : "";
-      console.log(`   ${i + 1}. ${token.outcome.padEnd(25)} ${price.padStart(6)}%${marker}`);
-    });
     
     // Try to match outcome selector
     let selectedToken = tokens[0];
@@ -181,21 +157,8 @@ async function resolveTokenId(
         if (matchIndex !== -1) {
           selectedToken = tokens[matchIndex];
           selectedIndex = matchIndex;
-        } else {
-          console.log(`\n⚠️  Could not find outcome matching "${outcomeSelector}"`);
-          console.log(`   Using default: ${tokens[0].outcome}\n`);
         }
       }
-    }
-    
-    if (outcomeSelector && selectedIndex > 0) {
-      console.log(`\n✅ Selected: ${selectedToken.outcome} (${(selectedToken.price * 100).toFixed(1)}%)\n`);
-    } else if (!outcomeSelector) {
-      console.log(`\n📍 Auto-selecting: ${selectedToken.outcome} (${(selectedToken.price * 100).toFixed(1)}%)`);
-      console.log(`\n💡 To monitor a different outcome:`);
-      console.log(`   npm start -- "${slug}" --outcome "25 bps decrease"`);
-      console.log(`   npm start -- "${slug}" --outcome 2`);
-      console.log(`   npm start -- <token_id>\n`);
     }
     
     return {
@@ -347,15 +310,11 @@ async function main(): Promise<void> {
     tokenId = input;
   }
 
-  console.log("🚀 Starting Polymarket Live Dashboard...\n");
-  console.log(`📊 Market: ${marketName}`);
-  console.log(`🎯 Outcome: ${outcome}`);
-  console.log(`🔌 Connecting to WebSocket...\n`);
+  // Initialize WebSocket client
 
   // Initialize UI
   let ui: DashboardUI | null = null;
 
-  // Initialize WebSocket client
   const wsClient = new PolymarketWebSocketClient(
     tokenId,
     (trades: Trade[], orderBook: OrderBook, connected: boolean) => {
@@ -381,14 +340,6 @@ async function main(): Promise<void> {
 
   // Connect to WebSocket
   wsClient.connect();
-
-  // Show loading message
-  setTimeout(() => {
-    if (!ui) {
-      console.log("⏳ Waiting for market data...");
-      console.log("   (This may take a few seconds)\n");
-    }
-  }, 2000);
 }
 
 // Run
