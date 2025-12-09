@@ -450,43 +450,50 @@ async function main(): Promise<void> {
   const wsClient = new PolymarketWebSocketClient(
     tokenId,
     (trades: Trade[], orderBook: OrderBook, connected: boolean) => {
-      if (!ui) {
-        // Create UI on first message
-        ui = new DashboardUI(tokenId, marketName, outcome);
+      try {
+        if (!ui) {
+          // Create UI on first message
+          ui = new DashboardUI(tokenId, marketName, outcome);
+        }
+
+        // Update simulator with market data
+        simulator.updateMarket(tokenId, orderBook);
+
+        // Initialize simulator context on first order book update
+        if (
+          !initialContextCreated &&
+          orderBook.bids.length > 0 &&
+          orderBook.asks.length > 0
+        ) {
+          const bestBid = orderBook.bids[0]?.price || 0;
+          const bestAsk = orderBook.asks[0]?.price || 1;
+          const currentPrice = bestAsk;
+
+          simulator.start({
+            tokenId,
+            marketName,
+            outcome,
+            currentPrice,
+            bestBid,
+            bestAsk,
+            timestamp: Date.now(),
+          });
+
+          initialContextCreated = true;
+        }
+
+        // Get simulated trades and portfolio
+        const simulatedTrades = simulator.getTrades();
+        const portfolio = simulator.getPortfolio().getSnapshot();
+
+        // Update UI with all data
+        if (ui) {
+          ui.update(trades, orderBook, connected, simulatedTrades, portfolio);
+        }
+      } catch (error) {
+        // Log error but don't crash - continue running
+        console.error("Error updating UI:", error);
       }
-
-      // Update simulator with market data
-      simulator.updateMarket(tokenId, orderBook);
-
-      // Initialize simulator context on first order book update
-      if (
-        !initialContextCreated &&
-        orderBook.bids.length > 0 &&
-        orderBook.asks.length > 0
-      ) {
-        const bestBid = orderBook.bids[0]?.price || 0;
-        const bestAsk = orderBook.asks[0]?.price || 1;
-        const currentPrice = bestAsk;
-
-        simulator.start({
-          tokenId,
-          marketName,
-          outcome,
-          currentPrice,
-          bestBid,
-          bestAsk,
-          timestamp: Date.now(),
-        });
-
-        initialContextCreated = true;
-      }
-
-      // Get simulated trades and portfolio
-      const simulatedTrades = simulator.getTrades();
-      const portfolio = simulator.getPortfolio().getSnapshot();
-
-      // Update UI with all data
-      ui.update(trades, orderBook, connected, simulatedTrades, portfolio);
     }
   );
 
@@ -502,6 +509,17 @@ async function main(): Promise<void> {
 
   process.on("SIGINT", cleanup);
   process.on("SIGTERM", cleanup);
+
+  // Handle uncaught errors to prevent crashes
+  process.on("uncaughtException", (error) => {
+    console.error("\n❌ Uncaught exception:", error.message);
+    cleanup();
+  });
+
+  process.on("unhandledRejection", (reason) => {
+    console.error("\n❌ Unhandled rejection:", reason);
+    // Don't exit on unhandled rejection, just log it
+  });
 
   // Connect to WebSocket
   wsClient.connect();

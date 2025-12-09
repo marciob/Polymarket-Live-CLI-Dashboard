@@ -23,6 +23,8 @@ export class DashboardUI {
     this.screen = blessed.screen({
       smartCSR: true,
       title: "Polymarket Live Dashboard",
+      fullUnicode: true,
+      warnings: false,
     });
 
     // Status bar at top
@@ -57,6 +59,7 @@ export class DashboardUI {
       },
       scrollable: true,
       alwaysScroll: true,
+      mouse: true,
       scrollbar: {
         ch: " ",
         style: {
@@ -84,6 +87,7 @@ export class DashboardUI {
       },
       scrollable: true,
       alwaysScroll: true,
+      mouse: true,
       scrollbar: {
         ch: " ",
         style: {
@@ -111,6 +115,7 @@ export class DashboardUI {
       },
       scrollable: true,
       alwaysScroll: true,
+      mouse: true,
       scrollbar: {
         ch: " ",
         style: {
@@ -151,10 +156,36 @@ export class DashboardUI {
     this.screen.append(this.orderBookBox);
     this.screen.append(this.portfolioBox);
 
-    // Quit on Escape, q, or Control-C
-    this.screen.key(["escape", "q", "C-c"], () => {
-      return process.exit(0);
+    // Enable mouse support for scrolling (with proper cleanup)
+    try {
+      this.screen.program.enableMouse();
+    } catch (error) {
+      // Mouse might not be supported in all terminals - continue without it
+    }
+
+    // Prevent individual boxes from capturing keys that conflict with screen
+    // Only handle quit at screen level
+    this.screen.key(["escape", "q", "Q", "C-c"], () => {
+      this.destroy();
+      process.exit(0);
     });
+
+    // Make boxes focusable for scrolling, but prevent them from capturing quit keys
+    [this.tradesBox, this.simulatedTradesBox, this.orderBookBox].forEach(
+      (box) => {
+        // Make focusable for scrolling
+        box.focusable = true;
+
+        // Prevent 'q' from closing when box is focused - delegate to screen
+        box.on("keypress", (ch, key) => {
+          if (ch === "q" || ch === "Q" || key.name === "escape") {
+            // Delegate quit to screen level
+            this.screen.emit("keypress", ch, key);
+            return;
+          }
+        });
+      }
+    );
 
     // Initial render
     this.screen.render();
@@ -170,9 +201,23 @@ export class DashboardUI {
     // Update status bar
     this.statusBar.setContent(this.formatStatusBar(connected));
 
-    // Update market trades panel
-    this.tradesBox.setLabel(` Market Trades (${trades.length}) `);
-    this.tradesBox.setContent(this.formatTrades(trades));
+    // Combine real trades and simulated trades for the market trades panel
+    const allTrades: Array<Trade & { isSimulated?: boolean }> = [
+      ...trades.map((t) => ({ ...t, isSimulated: false })),
+      ...(simulatedTrades || []).map((st) => ({
+        timestamp: st.timestamp,
+        side: st.side,
+        price: st.price,
+        size: st.size,
+        notional: st.notional,
+        isSimulated: true,
+      })),
+    ].sort((a, b) => b.timestamp - a.timestamp); // Sort by timestamp descending
+
+    // Update market trades panel (include simulated trades)
+    const totalCount = trades.length + (simulatedTrades?.length || 0);
+    this.tradesBox.setLabel(` Market Trades (${totalCount}) `);
+    this.tradesBox.setContent(this.formatTrades(allTrades));
 
     // Update simulated trades panel
     if (simulatedTrades) {
@@ -197,7 +242,31 @@ export class DashboardUI {
   }
 
   public destroy(): void {
-    this.screen.destroy();
+    // Clean up properly to prevent control characters from leaking
+    try {
+      // Disable mouse before destroying
+      try {
+        this.screen.program.disableMouse();
+      } catch (e) {
+        // Ignore if mouse wasn't enabled
+      }
+
+      // Reset terminal state
+      if (this.screen.program && this.screen.program.output) {
+        this.screen.program.output.write("\x1b[?25h"); // Show cursor
+        this.screen.program.output.write("\x1b[0m"); // Reset colors
+        this.screen.program.output.write("\x1b[?1000l"); // Disable mouse reporting
+      }
+
+      this.screen.destroy();
+    } catch (error) {
+      // Ignore errors during cleanup - just ensure we exit cleanly
+      try {
+        process.stdout.write("\x1b[?25h\x1b[0m\x1b[?1000l");
+      } catch (e) {
+        // Ignore
+      }
+    }
   }
 
   private formatStatusBar(connected: boolean): string {
@@ -206,7 +275,7 @@ export class DashboardUI {
       : "{red-fg}● Disconnected{/red-fg}";
 
     // Truncate market name if too long
-    const maxNameLen = 40;
+    const maxNameLen = 30;
     const displayName =
       this.marketName.length > maxNameLen
         ? this.marketName.substring(0, maxNameLen - 3) + "..."
@@ -214,10 +283,12 @@ export class DashboardUI {
 
     const now = new Date().toLocaleTimeString();
 
-    return `  ${status}  |  {bold}${displayName}{/bold}  |  Outcome: {cyan-fg}${this.outcome}{/cyan-fg}  |  {gray-fg}${now}{/gray-fg}  |  Press {bold}q{/bold} to quit`;
+    return `  ${status}  |  {bold}${displayName}{/bold}  |  {cyan-fg}${this.outcome}{/cyan-fg}  |  {gray-fg}${now}{/gray-fg}  |  {bold}q{/bold}=quit  {bold}↑↓{/bold}=scroll`;
   }
 
-  private formatTrades(trades: Trade[]): string {
+  private formatTrades(
+    trades: Array<Trade & { isSimulated?: boolean }>
+  ): string {
     if (trades.length === 0) {
       const now = new Date().toLocaleTimeString();
       return `\n  {gray-fg}Waiting for trades... (${now}){/gray-fg}\n\n  {yellow-fg}💡 Tip: Trades appear when orders match. The order book\n     updates frequently, but trades may be less common.{/yellow-fg}\n\n  {cyan-fg}Try a high-volume market for more activity:{/cyan-fg}\n  {gray-fg}npm run find-tokens{/gray-fg}`;
@@ -229,6 +300,7 @@ export class DashboardUI {
 
     const rows = trades.slice(0, 50).map((trade) => {
       const time = new Date(trade.timestamp).toLocaleTimeString();
+      const prefix = trade.isSimulated ? "{magenta-fg}S-{/magenta-fg}" : "   ";
       const side =
         trade.side === "BUY"
           ? "{green-fg}BUY {/green-fg}"
@@ -237,7 +309,7 @@ export class DashboardUI {
       const size = trade.size.toFixed(2).padStart(10);
       const notional = trade.notional.toFixed(2).padStart(12);
 
-      return `  ${time}  ${side}  ${price}  ${size}  ${notional}`;
+      return `  ${time}  ${prefix}${side}  ${price}  ${size}  ${notional}`;
     });
 
     return header + rows.join("\n");
@@ -339,11 +411,21 @@ export class DashboardUI {
         ? ((totalPnL / portfolio.totalCost) * 100).toFixed(2)
         : "0.00";
 
-    let summary = `  {bold}Total Cost:        {/bold}${totalCost.padStart(15)} USDC\n`;
-    summary += `  {bold}Current Value:     {/bold}${currentValue.padStart(15)} USDC\n`;
-    summary += `  {bold}Unrealized P&L:    {/bold}{${pnlColor}-fg}${unrealizedPnL.toFixed(2).padStart(15)}{/} USDC\n`;
-    summary += `  {bold}Realized P&L:      {/bold}{${pnlColor}-fg}${realizedPnL.toFixed(2).padStart(15)}{/} USDC\n`;
-    summary += `  {bold}Total P&L:         {/bold}{${pnlColor}-fg}${totalPnL.toFixed(2).padStart(15)} USDC (${pnlPercent}%){/}\n\n`;
+    let summary = `  {bold}Total Cost:        {/bold}${totalCost.padStart(
+      15
+    )} USDC\n`;
+    summary += `  {bold}Current Value:     {/bold}${currentValue.padStart(
+      15
+    )} USDC\n`;
+    summary += `  {bold}Unrealized P&L:    {/bold}{${pnlColor}-fg}${unrealizedPnL
+      .toFixed(2)
+      .padStart(15)}{/} USDC\n`;
+    summary += `  {bold}Realized P&L:      {/bold}{${pnlColor}-fg}${realizedPnL
+      .toFixed(2)
+      .padStart(15)}{/} USDC\n`;
+    summary += `  {bold}Total P&L:         {/bold}{${pnlColor}-fg}${totalPnL
+      .toFixed(2)
+      .padStart(15)} USDC (${pnlPercent}%){/}\n\n`;
 
     if (portfolio.positions.length > 0) {
       summary +=
@@ -356,8 +438,12 @@ export class DashboardUI {
 
       // Calculate average price for position valuation
       // For simplicity, use portfolio value / total shares as current price
-      const totalShares = portfolio.positions.reduce((sum, p) => sum + p.shares, 0);
-      const currentPrice = totalShares > 0 ? portfolio.currentValue / totalShares : 0.5;
+      const totalShares = portfolio.positions.reduce(
+        (sum, p) => sum + p.shares,
+        0
+      );
+      const currentPrice =
+        totalShares > 0 ? portfolio.currentValue / totalShares : 0.5;
 
       for (const position of portfolio.positions) {
         const positionValue = currentPrice * position.shares;
@@ -369,7 +455,9 @@ export class DashboardUI {
         const avgPrice = position.averagePrice.toFixed(4).padStart(10);
         const cost = position.totalCost.toFixed(2).padStart(10);
         const value = positionValue.toFixed(2).padStart(10);
-        const pnl = `${positionPnL >= 0 ? "+" : ""}${positionPnL.toFixed(2)}`.padStart(10);
+        const pnl = `${positionPnL >= 0 ? "+" : ""}${positionPnL.toFixed(
+          2
+        )}`.padStart(10);
 
         summary += `  ${outcome}  ${shares}  ${avgPrice}  ${cost}  ${value}  {${pnlColor}-fg}${pnl}{/}\n`;
       }
