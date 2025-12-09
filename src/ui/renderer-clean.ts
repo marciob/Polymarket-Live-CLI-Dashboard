@@ -21,7 +21,7 @@ export class DashboardUI {
   private simulatedTradesBox: blessed.Widgets.BoxElement;
   private orderBookBox: blessed.Widgets.BoxElement;
   private portfolioBox: blessed.Widgets.BoxElement;
-  private keyboardHandler!: KeyboardHandler;
+  private keyboardHandler: KeyboardHandler;
   private isExiting: boolean = false;
 
   constructor(
