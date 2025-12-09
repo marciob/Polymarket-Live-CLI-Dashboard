@@ -154,60 +154,8 @@ export class DashboardUI {
     this.screen.append(this.orderBookBox);
     this.screen.append(this.portfolioBox);
 
-    // NO MOUSE - prevents "Cr+" control sequences and unexpected exits
-    
-    // Track which box is focused for scrolling
-    let focusedBox: blessed.Widgets.BoxElement | null = null;
-    const boxes = [
-      { box: this.tradesBox, label: "Market Trades" },
-      { box: this.simulatedTradesBox, label: "Simulated Trades" },
-      { box: this.orderBookBox, label: "Order Book" }
-    ];
-    let focusedIndex = -1;
-    
-    // Tab to cycle through boxes
-    this.screen.key(["tab"], () => {
-      focusedIndex = (focusedIndex + 1) % boxes.length;
-      focusedBox = boxes[focusedIndex].box;
-      
-      // Update labels to show which is focused
-      boxes.forEach((item, idx) => {
-        const count = idx === 0 ? ` (${this.tradesBox.getContent().split('\n').length - 3})` : 
-                      idx === 1 ? ` (${this.simulatedTradesBox.getContent().split('\n').length - 3})` : "";
-        const prefix = idx === focusedIndex ? "[FOCUSED] " : "";
-        item.box.setLabel(` ${prefix}${item.label}${count} `);
-      });
-      this.screen.render();
-    });
-    
-    // Arrow keys to scroll focused box
-    this.screen.key(["up"], () => {
-      if (focusedBox) {
-        focusedBox.scroll(-1);
-        this.screen.render();
-      }
-    });
-    
-    this.screen.key(["down"], () => {
-      if (focusedBox) {
-        focusedBox.scroll(1);
-        this.screen.render();
-      }
-    });
-    
-    this.screen.key(["pageup"], () => {
-      if (focusedBox) {
-        focusedBox.scroll(-10);
-        this.screen.render();
-      }
-    });
-    
-    this.screen.key(["pagedown"], () => {
-      if (focusedBox) {
-        focusedBox.scroll(10);
-        this.screen.render();
-      }
-    });
+    // NO MOUSE - NO INPUT - NO KEY HANDLERS ON BOXES
+    // Only handle quit at screen level
 
     // Handle quit keys ONLY at screen level
     this.screen.key(["escape", "q", "Q", "C-c"], () => {
@@ -314,7 +262,7 @@ export class DashboardUI {
 
     const now = new Date().toLocaleTimeString();
 
-    return `  ${status}  |  {bold}${displayName}{/bold}  |  {cyan-fg}${this.outcome}{/cyan-fg}  |  {gray-fg}${now}{/gray-fg}  |  {bold}Tab{/bold}=focus  {bold}↑↓{/bold}=scroll  {bold}q{/bold}=quit`;
+    return `  ${status}  |  {bold}${displayName}{/bold}  |  {cyan-fg}${this.outcome}{/cyan-fg}  |  {gray-fg}${now}{/gray-fg}  |  Press {bold}q{/bold} to quit`;
   }
 
   private formatTrades(
