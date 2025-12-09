@@ -1,10 +1,14 @@
 import blessed from "blessed";
 import { Trade, OrderBook } from "../types";
+import { SimulatedTrade } from "../strategy/types";
+import { PortfolioSnapshot } from "../portfolio/types";
 
 export class DashboardUI {
   private screen: blessed.Widgets.Screen;
   private tradesBox: blessed.Widgets.BoxElement;
+  private simulatedTradesBox: blessed.Widgets.BoxElement;
   private orderBookBox: blessed.Widgets.BoxElement;
+  private portfolioBox: blessed.Widgets.BoxElement;
   private statusBar: blessed.Widgets.BoxElement;
   private tokenId: string;
   private marketName: string;
@@ -40,13 +44,13 @@ export class DashboardUI {
       },
     });
 
-    // Trades panel (left side)
+    // Market trades panel (top left)
     this.tradesBox = blessed.box({
       top: 3,
       left: 0,
-      width: "50%",
-      height: "100%-3",
-      label: " Recent Trades (0) ",
+      width: "33%",
+      height: "50%-3",
+      label: " Market Trades (0) ",
       tags: true,
       border: {
         type: "line",
@@ -67,12 +71,39 @@ export class DashboardUI {
       },
     });
 
-    // Order book panel (right side)
+    // Simulated trades panel (bottom left)
+    this.simulatedTradesBox = blessed.box({
+      top: "50%",
+      left: 0,
+      width: "33%",
+      height: "50%",
+      label: " Simulated Trades (0) ",
+      tags: true,
+      border: {
+        type: "line",
+      },
+      scrollable: true,
+      alwaysScroll: true,
+      scrollbar: {
+        ch: " ",
+        style: {
+          bg: "blue",
+        },
+      },
+      style: {
+        fg: "white",
+        border: {
+          fg: "magenta",
+        },
+      },
+    });
+
+    // Order book panel (top right)
     this.orderBookBox = blessed.box({
       top: 3,
-      left: "50%",
-      width: "50%",
-      height: "100%-3",
+      left: "33%",
+      width: "67%",
+      height: "50%-3",
       label: " Order Book ",
       tags: true,
       border: {
@@ -94,10 +125,31 @@ export class DashboardUI {
       },
     });
 
+    // Portfolio panel (bottom right)
+    this.portfolioBox = blessed.box({
+      top: "50%",
+      left: "33%",
+      width: "67%",
+      height: "50%",
+      label: " Portfolio ",
+      tags: true,
+      border: {
+        type: "line",
+      },
+      style: {
+        fg: "white",
+        border: {
+          fg: "cyan",
+        },
+      },
+    });
+
     // Add elements to screen
     this.screen.append(this.statusBar);
     this.screen.append(this.tradesBox);
+    this.screen.append(this.simulatedTradesBox);
     this.screen.append(this.orderBookBox);
+    this.screen.append(this.portfolioBox);
 
     // Quit on Escape, q, or Control-C
     this.screen.key(["escape", "q", "C-c"], () => {
@@ -111,17 +163,34 @@ export class DashboardUI {
   public update(
     trades: Trade[],
     orderBook: OrderBook,
-    connected: boolean
+    connected: boolean,
+    simulatedTrades?: SimulatedTrade[],
+    portfolio?: PortfolioSnapshot
   ): void {
     // Update status bar
     this.statusBar.setContent(this.formatStatusBar(connected));
 
-    // Update trades panel with count in label
-    this.tradesBox.setLabel(` Recent Trades (${trades.length}) `);
+    // Update market trades panel
+    this.tradesBox.setLabel(` Market Trades (${trades.length}) `);
     this.tradesBox.setContent(this.formatTrades(trades));
+
+    // Update simulated trades panel
+    if (simulatedTrades) {
+      this.simulatedTradesBox.setLabel(
+        ` Simulated Trades (${simulatedTrades.length}) `
+      );
+      this.simulatedTradesBox.setContent(
+        this.formatSimulatedTrades(simulatedTrades)
+      );
+    }
 
     // Update order book
     this.orderBookBox.setContent(this.formatOrderBook(orderBook));
+
+    // Update portfolio
+    if (portfolio) {
+      this.portfolioBox.setContent(this.formatPortfolio(portfolio));
+    }
 
     // Render
     this.screen.render();
@@ -226,5 +295,88 @@ export class DashboardUI {
     }
 
     return header + rows.join("\n") + spreadText;
+  }
+
+  private formatSimulatedTrades(trades: SimulatedTrade[]): string {
+    if (trades.length === 0) {
+      return "\n  {gray-fg}No simulated trades yet...{/gray-fg}\n\n  {yellow-fg}💡 Simulated trades will appear here when your\n     strategy executes.{/yellow-fg}";
+    }
+
+    const header =
+      "  {bold}Time          Strategy      Side    Price      Size        Value{/bold}\n" +
+      "  ──────────────────────────────────────────────────────────────────────\n";
+
+    const rows = trades.slice(0, 30).map((trade) => {
+      const time = new Date(trade.timestamp).toLocaleTimeString();
+      const strategy = trade.strategyName.substring(0, 12).padEnd(12);
+      const side =
+        trade.side === "BUY"
+          ? "{green-fg}BUY {/green-fg}"
+          : "{red-fg}SELL{/red-fg}";
+      const price = trade.price.toFixed(4).padStart(8);
+      const size = trade.size.toFixed(2).padStart(10);
+      const notional = trade.notional.toFixed(2).padStart(12);
+
+      return `  ${time}  ${strategy}  ${side}  ${price}  ${size}  ${notional}`;
+    });
+
+    return header + rows.join("\n");
+  }
+
+  private formatPortfolio(portfolio: PortfolioSnapshot): string {
+    const header =
+      "  {bold}Portfolio Summary{/bold}\n" +
+      "  ──────────────────────────────────────────────────────────────────────\n\n";
+
+    const totalCost = portfolio.totalCost.toFixed(2);
+    const currentValue = portfolio.currentValue.toFixed(2);
+    const unrealizedPnL = portfolio.unrealizedPnL;
+    const realizedPnL = portfolio.realizedPnL;
+    const totalPnL = unrealizedPnL + realizedPnL;
+    const pnlColor = totalPnL >= 0 ? "green" : "red";
+    const pnlPercent =
+      portfolio.totalCost > 0
+        ? ((totalPnL / portfolio.totalCost) * 100).toFixed(2)
+        : "0.00";
+
+    let summary = `  {bold}Total Cost:        {/bold}${totalCost.padStart(15)} USDC\n`;
+    summary += `  {bold}Current Value:     {/bold}${currentValue.padStart(15)} USDC\n`;
+    summary += `  {bold}Unrealized P&L:    {/bold}{${pnlColor}-fg}${unrealizedPnL.toFixed(2).padStart(15)}{/} USDC\n`;
+    summary += `  {bold}Realized P&L:      {/bold}{${pnlColor}-fg}${realizedPnL.toFixed(2).padStart(15)}{/} USDC\n`;
+    summary += `  {bold}Total P&L:         {/bold}{${pnlColor}-fg}${totalPnL.toFixed(2).padStart(15)} USDC (${pnlPercent}%){/}\n\n`;
+
+    if (portfolio.positions.length > 0) {
+      summary +=
+        "  {bold}Positions:{/bold}\n" +
+        "  ──────────────────────────────────────────────────────────────────────\n";
+      summary +=
+        "  {bold}Outcome        Shares      Avg Price    Cost        Value       P&L{/bold}\n";
+      summary +=
+        "  ──────────────────────────────────────────────────────────────────────\n";
+
+      // Calculate average price for position valuation
+      // For simplicity, use portfolio value / total shares as current price
+      const totalShares = portfolio.positions.reduce((sum, p) => sum + p.shares, 0);
+      const currentPrice = totalShares > 0 ? portfolio.currentValue / totalShares : 0.5;
+
+      for (const position of portfolio.positions) {
+        const positionValue = currentPrice * position.shares;
+        const positionPnL = positionValue - position.totalCost;
+        const pnlColor = positionPnL >= 0 ? "green" : "red";
+
+        const outcome = position.outcome.substring(0, 12).padEnd(12);
+        const shares = position.shares.toFixed(2).padStart(10);
+        const avgPrice = position.averagePrice.toFixed(4).padStart(10);
+        const cost = position.totalCost.toFixed(2).padStart(10);
+        const value = positionValue.toFixed(2).padStart(10);
+        const pnl = `${positionPnL >= 0 ? "+" : ""}${positionPnL.toFixed(2)}`.padStart(10);
+
+        summary += `  ${outcome}  ${shares}  ${avgPrice}  ${cost}  ${value}  {${pnlColor}-fg}${pnl}{/}\n`;
+      }
+    } else {
+      summary += "  {gray-fg}No positions yet...{/gray-fg}\n";
+    }
+
+    return header + summary;
   }
 }
