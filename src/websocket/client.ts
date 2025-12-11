@@ -1,3 +1,4 @@
+// src/websocket/client.ts
 import WebSocket from "ws";
 import {
   WebSocketMessage,
@@ -7,6 +8,7 @@ import {
   OrderBook,
   Trade,
   OrderBookLevel,
+  OrderSummary,
 } from "../types";
 
 const WS_URL = "wss://ws-subscriptions-clob.polymarket.com/ws/market";
@@ -132,15 +134,57 @@ export class PolymarketWebSocketClient {
   }
 
   private handleBookMessage(message: BookMessage): void {
+    // Handle both 'bids'/'asks' and 'buys'/'sells' field names
+    // (documentation shows both formats)
+    const bidData = (message as any).bids || (message as any).buys || [];
+    const askData = (message as any).asks || (message as any).sells || [];
+
+    // Parse and sort order book
+    const bids = bidData
+      .map((b: OrderSummary) => {
+        const parsedPrice = parseFloat(b.price);
+        const parsedSize = parseFloat(b.size);
+
+        // DEBUG: Check for unit conversion issues
+        if (process.env.DEBUG_PORTFOLIO === "true" && parsedPrice > 1) {
+          console.error(
+            `[WebSocket] WARNING: Bid price > 1: ${parsedPrice} from raw: ${JSON.stringify(
+              b.price
+            )}`
+          );
+        }
+
+        return {
+          price: parsedPrice,
+          size: parsedSize,
+        };
+      })
+      .sort((a: OrderBookLevel, b: OrderBookLevel) => b.price - a.price); // Sort bids descending (highest first)
+
+    const asks = askData
+      .map((a: OrderSummary) => {
+        const parsedPrice = parseFloat(a.price);
+        const parsedSize = parseFloat(a.size);
+
+        // DEBUG: Check for unit conversion issues
+        if (process.env.DEBUG_PORTFOLIO === "true" && parsedPrice > 1) {
+          console.error(
+            `[WebSocket] WARNING: Ask price > 1: ${parsedPrice} from raw: ${JSON.stringify(
+              a.price
+            )}`
+          );
+        }
+
+        return {
+          price: parsedPrice,
+          size: parsedSize,
+        };
+      })
+      .sort((a: OrderBookLevel, b: OrderBookLevel) => a.price - b.price); // Sort asks ascending (lowest first)
+
     this.orderBook = {
-      bids: message.bids.map((b) => ({
-        price: parseFloat(b.price),
-        size: parseFloat(b.size),
-      })),
-      asks: message.asks.map((a) => ({
-        price: parseFloat(a.price),
-        size: parseFloat(a.size),
-      })),
+      bids,
+      asks,
       lastUpdate: parseInt(message.timestamp),
     };
 
@@ -175,9 +219,9 @@ export class PolymarketWebSocketClient {
       const size = parseFloat(change.size);
 
       if (change.side === "BUY") {
-        this.updateLevel(this.orderBook.bids, price, size);
+        this.updateLevel(this.orderBook.bids, price, size, true);
       } else {
-        this.updateLevel(this.orderBook.asks, price, size);
+        this.updateLevel(this.orderBook.asks, price, size, false);
       }
     }
 
@@ -188,7 +232,8 @@ export class PolymarketWebSocketClient {
   private updateLevel(
     levels: OrderBookLevel[],
     price: number,
-    size: number
+    size: number,
+    isBid: boolean
   ): void {
     const index = levels.findIndex((l) => l.price === price);
 
@@ -206,7 +251,12 @@ export class PolymarketWebSocketClient {
       }
     }
 
-    // Keep sorted (bids descending, asks ascending handled in UI)
+    // Keep sorted: bids descending (highest first), asks ascending (lowest first)
+    if (isBid) {
+      levels.sort((a, b) => b.price - a.price);
+    } else {
+      levels.sort((a, b) => a.price - b.price);
+    }
   }
 
   private onError(error: Error): void {

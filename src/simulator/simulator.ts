@@ -1,3 +1,4 @@
+// src/simulator/simulator.ts
 /**
  * Strategy Simulator - Executes strategies and tracks simulated trades
  */
@@ -41,7 +42,9 @@ export class StrategySimulator {
    * Remove a strategy
    */
   removeStrategy(strategyName: string): void {
-    this.strategies = this.strategies.filter((s) => s.getName() !== strategyName);
+    this.strategies = this.strategies.filter(
+      (s) => s.getName() !== strategyName
+    );
   }
 
   /**
@@ -134,7 +137,10 @@ export class StrategySimulator {
         }
       } catch (error) {
         // Log error but continue with other strategies
-        console.error(`Error evaluating strategy ${strategy.getName()}:`, error);
+        console.error(
+          `Error evaluating strategy ${strategy.getName()}:`,
+          error
+        );
       }
     }
   }
@@ -160,7 +166,8 @@ export class StrategySimulator {
 
     let remainingSize = size;
     let totalCost = 0;
-    const levels = side === "BUY" ? this.currentOrderBook.asks : this.currentOrderBook.bids;
+    const levels =
+      side === "BUY" ? this.currentOrderBook.asks : this.currentOrderBook.bids;
 
     // For BUY: walk asks (ascending price)
     // For SELL: walk bids (descending price)
@@ -206,7 +213,12 @@ export class StrategySimulator {
    */
   private executeTrade(
     strategyName: string,
-    trade: { side: "BUY" | "SELL"; size: number; price?: number; tokenId?: string }
+    trade: {
+      side: "BUY" | "SELL";
+      size: number;
+      price?: number;
+      tokenId?: string;
+    }
   ): void {
     if (!this.currentContext) {
       return;
@@ -223,6 +235,39 @@ export class StrategySimulator {
       // Walk the order book to get best average execution price
       const execution = this.calculateExecutionPrice(trade.side, trade.size);
       executionPrice = execution.averagePrice;
+
+      // DEBUG: Log order book calculation
+      if (process.env.DEBUG_PORTFOLIO === "true") {
+        console.error(`[Simulator.calculateExecutionPrice] Result:`);
+        console.error(`  averagePrice: ${executionPrice}`);
+        console.error(`  canFill: ${execution.canFill}`);
+        if (this.currentOrderBook) {
+          const levels =
+            trade.side === "BUY"
+              ? this.currentOrderBook.asks
+              : this.currentOrderBook.bids;
+          console.error(
+            `  Order book levels (first 3):`,
+            levels.slice(0, 3).map((l) => `price=${l.price}, size=${l.size}`)
+          );
+        }
+      }
+    }
+
+    // DEBUG: Log execution price before creating trade
+    if (process.env.DEBUG_PORTFOLIO === "true") {
+      console.error(`[Simulator.executeTrade] BEFORE CREATING TRADE:`);
+      console.error(`  side: ${trade.side}`);
+      console.error(
+        `  executionPrice: ${executionPrice} (type: ${typeof executionPrice})`
+      );
+      console.error(`  size: ${trade.size} (type: ${typeof trade.size})`);
+      console.error(`  notional: ${executionPrice * trade.size}`);
+      console.error(
+        `  Is executionPrice > 1? ${
+          executionPrice > 1
+        } (should be false for Polymarket)`
+      );
     }
 
     // Create simulated trade
@@ -239,6 +284,14 @@ export class StrategySimulator {
 
     // Add to portfolio (use context outcome, or try to find it)
     const outcome = this.currentContext.outcome;
+
+    // Debug: Log before adding to portfolio
+    if (process.env.DEBUG_PORTFOLIO === "true") {
+      console.error(`[Simulator.executeTrade] CALLING portfolio.addTrade:`);
+      console.error(`  executionPrice: ${executionPrice}`);
+      console.error(`  trade.size: ${trade.size}`);
+    }
+
     this.portfolio.addTrade(
       tradeTokenId,
       outcome,
@@ -301,4 +354,3 @@ export class StrategySimulator {
     return this.currentContext;
   }
 }
-

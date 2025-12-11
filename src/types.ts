@@ -1,3 +1,4 @@
+// src/types.ts
 /**
  * TypeScript types for Polymarket CLOB WebSocket messages
  */
@@ -86,4 +87,3 @@ export interface DashboardState {
   connected: boolean;
   tokenId: string;
 }
-

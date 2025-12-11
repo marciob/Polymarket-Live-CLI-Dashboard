@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+// src/index.ts
 import https from "https";
 import * as readline from "readline";
 import blessed from "blessed";
@@ -582,10 +583,24 @@ async function main(): Promise<void> {
   let selectedOutcome = outcome;
 
   if (allTokens.length > 1) {
-    // Multiple tokens available - prompt user to choose
-    const choice = await promptOutcomeChoice(allTokens);
-    selectedTokenId = choice.tokenId;
-    selectedOutcome = choice.outcome;
+    if (outcomeSelector) {
+      // Outcome already selected via --outcome, so don't prompt interactively.
+      // Fetch current price for the selected token to display confirmation.
+      console.log("\n⏳ Fetching current market price...");
+      const [selectedToken] = await fetchCurrentPrices([
+        { token_id: tokenId, outcome, price: 0 },
+      ]);
+      const priceDisplay =
+        selectedToken && selectedToken.price > 0
+          ? ` at $${selectedToken.price.toFixed(4)}`
+          : "";
+      console.log(`\n✅ Strategy will buy: ${outcome}${priceDisplay}\n`);
+    } else {
+      // Multiple tokens available - prompt user to choose
+      const choice = await promptOutcomeChoice(allTokens);
+      selectedTokenId = choice.tokenId;
+      selectedOutcome = choice.outcome;
+    }
   } else if (allTokens.length === 1) {
     // Only one token, fetch current price and use it
     console.log("\n⏳ Fetching current market price...");

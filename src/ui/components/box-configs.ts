@@ -1,3 +1,4 @@
+// src/ui/components/box-configs.ts
 /**
  * Blessed box configurations
  */
@@ -92,12 +93,18 @@ export function createPortfolioBox(): blessed.Widgets.BoxElement {
     width: "67%",
     height: "50%",
     label: " Portfolio ",
-    tags: true,
+    // Portfolio content is plain text (no blessed tags).
+    // Keeping tags enabled here has caused intermittent rendering issues
+    // where decimal points disappear or digits appear swapped.
+    tags: false,
+    // Force full redraw of the region each render to avoid stale characters
+    // (we've observed missing '.' and trailing digits in this panel).
+    clear: true,
     border: { type: "line" },
     style: {
       fg: "white",
+      bg: "black",
       border: { fg: "cyan" },
     },
   });
 }
-

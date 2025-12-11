@@ -1,3 +1,4 @@
+// src/ui/formatters/simulated-trades.ts
 /**
  * Simulated trades formatting
  */
@@ -39,4 +40,3 @@ function formatSimulatedTradeRow(trade: SimulatedTrade): string {
 
   return `  ${time}  ${strategy}  ${side}  ${price}  ${size}  ${notional}`;
 }
-

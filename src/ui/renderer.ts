@@ -1,3 +1,4 @@
+// src/ui/renderer.ts
 /**
  * Clean, composable dashboard UI
  */
@@ -145,7 +146,7 @@ export class DashboardUI {
   }
 
   private updateOrderBookPanel(orderBook: OrderBook): void {
-    this.orderBookBox.setContent(formatOrderBook(orderBook));
+    this.orderBookBox.setContent(formatOrderBook(orderBook, this.outcome));
   }
 
   private updatePortfolioPanel(portfolio?: PortfolioSnapshot): void {
@@ -186,4 +187,3 @@ export class DashboardUI {
     }
   }
 }
-

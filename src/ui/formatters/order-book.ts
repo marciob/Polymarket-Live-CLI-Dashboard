@@ -1,3 +1,4 @@
+// src/ui/formatters/order-book.ts
 /**
  * Order book formatting
  */
@@ -6,25 +7,27 @@ import { OrderBook } from "../../types";
 
 const MAX_LEVELS = 30;
 
-export function formatOrderBook(orderBook: OrderBook): string {
+export function formatOrderBook(orderBook: OrderBook, outcome: string): string {
   if (orderBook.bids.length === 0 && orderBook.asks.length === 0) {
-    return "\n  {gray-fg}Waiting for order book...{/gray-fg}";
+    return `\n  {gray-fg}Waiting for order book for "${outcome}"...{/gray-fg}`;
   }
 
   const sortedAsks = [...orderBook.asks].sort((a, b) => a.price - b.price);
   const sortedBids = [...orderBook.bids].sort((a, b) => b.price - a.price);
 
-  const header = buildOrderBookHeader();
+  const header = buildOrderBookHeader(outcome);
   const rows = buildOrderBookRows(sortedAsks, sortedBids);
   const spread = calculateSpread(sortedAsks, sortedBids);
 
   return header + rows.join("\n") + spread;
 }
 
-function buildOrderBookHeader(): string {
+function buildOrderBookHeader(outcome: string): string {
   return (
+    `  {bold}{cyan-fg}Order Book for: "${outcome}"{/cyan-fg}{/bold}\n` +
     "  {bold}       Price      Size    |       Price      Size{/bold}\n" +
     "  {bold}       (Ask)              |       (Bid)             {/bold}\n" +
+    "  {bold}  Buy prices              |  Sell prices            {/bold}\n" +
     "  ──────────────────────────────────────────────────────────\n"
   );
 }
@@ -75,4 +78,3 @@ function calculateSpread(
     4
   )} (${spreadBps} bps){/cyan-fg}`;
 }
-
