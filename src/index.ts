@@ -12,17 +12,17 @@ function httpsGet(url: string): Promise<string> {
   return new Promise((resolve, reject) => {
     https
       .get(url, (res) => {
-      let data = "";
+        let data = "";
         res.on("data", (chunk) => {
           data += chunk;
         });
-      res.on("end", () => {
-        if (res.statusCode !== 200) {
-          reject(new Error(`HTTP ${res.statusCode}`));
-        } else {
-          resolve(data);
-        }
-      });
+        res.on("end", () => {
+          if (res.statusCode !== 200) {
+            reject(new Error(`HTTP ${res.statusCode}`));
+          } else {
+            resolve(data);
+          }
+        });
       })
       .on("error", reject);
   });
@@ -30,7 +30,7 @@ function httpsGet(url: string): Promise<string> {
 
 async function fetchMarketsBySlug(slug: string): Promise<any[]> {
   let lastError: Error | null = null;
-  
+
   // Try markets endpoint first
   try {
     const url = `https://gamma-api.polymarket.com/markets?slug=${slug}&closed=false`;
@@ -43,13 +43,13 @@ async function fetchMarketsBySlug(slug: string): Promise<any[]> {
     lastError = error instanceof Error ? error : new Error(String(error));
     // Fall through to try events endpoint
   }
-  
+
   // Try events endpoint (for event slugs)
   try {
     const eventUrl = `https://gamma-api.polymarket.com/events/slug/${slug}`;
     const eventData = await httpsGet(eventUrl);
     const event = JSON.parse(eventData);
-    
+
     // If event has markets array, return those
     if (
       event.markets &&
@@ -58,7 +58,7 @@ async function fetchMarketsBySlug(slug: string): Promise<any[]> {
     ) {
       return event.markets;
     }
-    
+
     // Event found but no markets
     throw new Error(
       `Event found but has no markets. Market may not be ready yet.`
@@ -66,12 +66,12 @@ async function fetchMarketsBySlug(slug: string): Promise<any[]> {
   } catch (error) {
     const eventError =
       error instanceof Error ? error : new Error(String(error));
-    
+
     // If both failed, show the most helpful error
     if (lastError && eventError.message.includes("Event found")) {
       throw eventError;
     }
-    
+
     throw new Error(
       `Could not find market or event with slug: ${slug}. ${eventError.message}`
     );
@@ -83,23 +83,23 @@ function parseTokenData(
 ): Array<{ token_id: string; outcome: string; price: number }> {
   const tokens: Array<{ token_id: string; outcome: string; price: number }> =
     [];
-  
+
   try {
     const tokenIds: string[] =
       typeof market.clobTokenIds === "string"
-      ? JSON.parse(market.clobTokenIds) 
+        ? JSON.parse(market.clobTokenIds)
         : market.clobTokenIds || [];
-    
+
     const outcomes: string[] =
       typeof market.outcomes === "string"
-      ? JSON.parse(market.outcomes)
+        ? JSON.parse(market.outcomes)
         : market.outcomes || [];
-    
+
     const prices: string[] =
       typeof market.outcomePrices === "string"
-      ? JSON.parse(market.outcomePrices)
+        ? JSON.parse(market.outcomePrices)
         : market.outcomePrices || [];
-    
+
     for (let i = 0; i < tokenIds.length; i++) {
       tokens.push({
         token_id: tokenIds[i],
@@ -110,7 +110,7 @@ function parseTokenData(
   } catch (error) {
     // Return empty on error
   }
-  
+
   return tokens;
 }
 
@@ -139,39 +139,39 @@ async function resolveTokenId(
   allTokens: Array<{ token_id: string; outcome: string; price: number }>;
 }> {
   const slug = extractSlug(input);
-  
+
   if (!slug) {
     // It's already a token ID
-    return { 
-      tokenId: input, 
-      marketName: "Unknown", 
+    return {
+      tokenId: input,
+      marketName: "Unknown",
       outcome: "Unknown",
       allTokens: [],
     };
   }
-  
+
   try {
     const markets = await fetchMarketsBySlug(slug);
-    
+
     if (!markets || markets.length === 0) {
       throw new Error(
         `No markets found for slug: ${slug}. The market may be closed or the slug may be incorrect.`
       );
     }
-    
+
     const market = markets[0];
     const tokens = parseTokenData(market);
-    
+
     if (tokens.length === 0) {
       throw new Error(
         `No tokens found in market. Market may not be ready yet. Try: npm run get-tokens "${slug}"`
       );
     }
-    
+
     // Try to match outcome selector
     let selectedToken = tokens[0];
     let selectedIndex = 0;
-    
+
     if (outcomeSelector) {
       // Try to match by index (1-based)
       const index = parseInt(outcomeSelector);
@@ -184,7 +184,7 @@ async function resolveTokenId(
         const matchIndex = tokens.findIndex(
           (t) =>
             t.outcome.toLowerCase().includes(lowerSelector) ||
-                 lowerSelector.includes(t.outcome.toLowerCase())
+            lowerSelector.includes(t.outcome.toLowerCase())
         );
         if (matchIndex !== -1) {
           selectedToken = tokens[matchIndex];
@@ -192,7 +192,7 @@ async function resolveTokenId(
         }
       }
     }
-    
+
     return {
       tokenId: selectedToken.token_id,
       marketName: market.question || slug,
@@ -209,11 +209,111 @@ async function resolveTokenId(
 }
 
 /**
+ * Fetch current market prices for tokens using CLOB API
+ * Uses multiple endpoints to get the best ask price (buy price) for accurate buying costs
+ */
+async function fetchCurrentPrices(
+  tokens: Array<{ token_id: string; outcome: string; price: number }>
+): Promise<Array<{ token_id: string; outcome: string; price: number }>> {
+  const CLOB_BASE_URL = "https://clob.polymarket.com";
+
+  // Try to fetch all prices at once using the /prices endpoint (if it supports multiple tokens)
+  // Otherwise, fetch individually
+  if (tokens.length === 0) {
+    return tokens;
+  }
+
+  // Fetch prices for all tokens in parallel using individual requests
+  const pricePromises = tokens.map(async (token) => {
+    let currentPrice = 0;
+
+    // Strategy 1: Try /book endpoint to get order book and extract best ask
+    try {
+      const bookUrl = `${CLOB_BASE_URL}/book?token_id=${token.token_id}`;
+      const bookData = await httpsGet(bookUrl);
+      const bookResponse = JSON.parse(bookData);
+
+      // Check if we got an order book (not an error)
+      if (bookResponse.asks || bookResponse.sells) {
+        const asks = bookResponse.asks || bookResponse.sells || [];
+
+        if (Array.isArray(asks) && asks.length > 0) {
+          // Extract prices from asks
+          const askPrices = asks
+            .map((ask: any) => {
+              if (Array.isArray(ask)) {
+                return parseFloat(String(ask[0] || "0"));
+              } else if (ask && typeof ask === "object") {
+                return parseFloat(String(ask.price || "0"));
+              }
+              return 0;
+            })
+            .filter((p: number) => p > 0 && p <= 1);
+
+          if (askPrices.length > 0) {
+            currentPrice = Math.min(...askPrices);
+          }
+        }
+      }
+    } catch (bookError) {
+      // Continue to next strategy
+    }
+
+    // Strategy 2: If book didn't work, try /price endpoint with side=BUY
+    if (currentPrice <= 0) {
+      try {
+        const priceUrl = `${CLOB_BASE_URL}/price?token_id=${token.token_id}&side=BUY`;
+        const priceData = await httpsGet(priceUrl);
+        const priceResponse = JSON.parse(priceData);
+
+        // Response might be { price: "0.52" } or { bestAsk: "0.52" } or similar
+        const price =
+          priceResponse.price || priceResponse.bestAsk || priceResponse.ask;
+        if (price) {
+          currentPrice = parseFloat(String(price));
+        }
+      } catch (priceError) {
+        // Continue to next strategy
+      }
+    }
+
+    // Strategy 3: Fallback to midpoint
+    if (currentPrice <= 0) {
+      try {
+        const midpointUrl = `${CLOB_BASE_URL}/midpoint?token_id=${token.token_id}`;
+        const midpointData = await httpsGet(midpointUrl);
+        const midpointResponse = JSON.parse(midpointData);
+        const midpointPrice = midpointResponse.price
+          ? parseFloat(String(midpointResponse.price))
+          : 0;
+
+        if (midpointPrice > 0 && midpointPrice <= 1) {
+          currentPrice = midpointPrice;
+        }
+      } catch (midpointError) {
+        // Use original price as last resort
+      }
+    }
+
+    return {
+      ...token,
+      price: currentPrice > 0 && currentPrice <= 1 ? currentPrice : token.price,
+    };
+  });
+
+  return Promise.all(pricePromises);
+}
+
+/**
  * Prompt user to choose which outcome to buy
  */
-function promptOutcomeChoice(
+async function promptOutcomeChoice(
   tokens: Array<{ token_id: string; outcome: string; price: number }>
 ): Promise<{ tokenId: string; outcome: string }> {
+  // Fetch current prices before displaying
+  console.log("\n⏳ Fetching current market prices...");
+  const tokensWithPrices = await fetchCurrentPrices(tokens);
+
   return new Promise((resolve) => {
     const rl = readline.createInterface({
       input: process.stdin,
@@ -221,7 +321,7 @@ function promptOutcomeChoice(
     });
 
     console.log("\n📊 Available outcomes to buy:");
-    tokens.forEach((token, index) => {
+    tokensWithPrices.forEach((token, index) => {
       const price = token.price > 0 ? `($${token.price.toFixed(4)})` : "";
       console.log(`  ${index + 1}. ${token.outcome} ${price}`);
     });
@@ -232,8 +332,12 @@ function promptOutcomeChoice(
         rl.close();
 
         const choice = parseInt(answer.trim());
-        if (!isNaN(choice) && choice >= 1 && choice <= tokens.length) {
-          const selected = tokens[choice - 1];
+        if (
+          !isNaN(choice) &&
+          choice >= 1 &&
+          choice <= tokensWithPrices.length
+        ) {
+          const selected = tokensWithPrices[choice - 1];
           console.log(`\n✅ Selected: ${selected.outcome}\n`);
           resolve({
             tokenId: selected.token_id,
@@ -242,11 +346,11 @@ function promptOutcomeChoice(
         } else {
           // Default to first token if invalid choice
           console.log(
-            `\n⚠️  Invalid choice, defaulting to: ${tokens[0].outcome}\n`
+            `\n⚠️  Invalid choice, defaulting to: ${tokensWithPrices[0].outcome}\n`
           );
           resolve({
-            tokenId: tokens[0].token_id,
-            outcome: tokens[0].outcome,
+            tokenId: tokensWithPrices[0].token_id,
+            outcome: tokensWithPrices[0].outcome,
           });
         }
       }
@@ -322,7 +426,7 @@ async function main(): Promise<void> {
   // Parse arguments for --outcome flag
   let input = args[0];
   let outcomeSelector: string | undefined;
-  
+
   const outcomeIndex = args.indexOf("--outcome");
   if (outcomeIndex !== -1 && outcomeIndex + 1 < args.length) {
     outcomeSelector = args[outcomeIndex + 1];
@@ -344,19 +448,19 @@ async function main(): Promise<void> {
   } catch (error) {
     // Show the actual error message first
     const errorMessage = error instanceof Error ? error.message : String(error);
-    
+
     // If it's already a token ID (all digits), validate it
     if (/^\d+$/.test(input)) {
       if (input.length < 70) {
         console.error("\n❌ Error: Token ID too short.");
         console.error(`   You provided: ${input} (${input.length} digits)`);
         console.error("   Valid token IDs are 77-78 digits long.\n");
-        
+
         if (input.length < 15) {
           console.error("   ⚠️  It looks like you used the 'tid' from a URL.");
           console.error("      The 'tid' parameter is NOT a token ID!\n");
         }
-        
+
         console.error("   Try pasting the full URL instead:");
         console.error(
           '   npm start -- "https://polymarket.com/event/your-market"\n'
@@ -369,7 +473,7 @@ async function main(): Promise<void> {
       // Not a token ID, show the actual API error
       console.error("\n❌ Error fetching market:");
       console.error(`   ${errorMessage}\n`);
-      
+
       console.error("Troubleshooting:");
       console.error("1. Check that the URL/slug is correct");
       console.error(
@@ -386,12 +490,12 @@ async function main(): Promise<void> {
       console.error("\n❌ Error: Token ID too short.");
       console.error(`   You provided: ${input} (${input.length} digits)`);
       console.error("   Valid token IDs are 77-78 digits long.\n");
-      
+
       if (input.length < 15) {
         console.error("   ⚠️  It looks like you used the 'tid' from a URL.");
         console.error("      The 'tid' parameter is NOT a token ID!\n");
       }
-      
+
       console.error("   Try pasting the full URL instead:");
       console.error(
         '   npm start -- "https://polymarket.com/event/your-market"\n'
@@ -412,10 +516,15 @@ async function main(): Promise<void> {
     selectedTokenId = choice.tokenId;
     selectedOutcome = choice.outcome;
   } else if (allTokens.length === 1) {
-    // Only one token, use it
-    selectedTokenId = allTokens[0].token_id;
-    selectedOutcome = allTokens[0].outcome;
-    console.log(`\n✅ Strategy will buy: ${selectedOutcome}\n`);
+    // Only one token, fetch current price and use it
+    console.log("\n⏳ Fetching current market price...");
+    const tokensWithPrices = await fetchCurrentPrices(allTokens);
+    const token = tokensWithPrices[0];
+    selectedTokenId = token.token_id;
+    selectedOutcome = token.outcome;
+    const priceDisplay =
+      token.price > 0 ? ` at $${token.price.toFixed(4)}` : "";
+    console.log(`\n✅ Strategy will buy: ${selectedOutcome}${priceDisplay}\n`);
   } else {
     // No tokens list (e.g., when using token ID directly)
     // Use the resolved tokenId and outcome
@@ -451,10 +560,10 @@ async function main(): Promise<void> {
     tokenId,
     (trades: Trade[], orderBook: OrderBook, connected: boolean) => {
       try {
-      if (!ui) {
-        // Create UI on first message
-        ui = new DashboardUI(tokenId, marketName, outcome);
-      }
+        if (!ui) {
+          // Create UI on first message
+          ui = new DashboardUI(tokenId, marketName, outcome);
+        }
 
         // Update simulator with market data
         simulator.updateMarket(tokenId, orderBook);
