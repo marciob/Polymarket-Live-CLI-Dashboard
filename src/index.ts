@@ -2,6 +2,7 @@
 
 import https from "https";
 import * as readline from "readline";
+import blessed from "blessed";
 import { PolymarketWebSocketClient } from "./websocket/client";
 import { DashboardUI } from "./ui/renderer";
 import { Trade, OrderBook } from "./types";
@@ -305,7 +306,7 @@ async function fetchCurrentPrices(
 }
 
 /**
- * Prompt user to choose which outcome to buy
+ * Prompt user to choose which outcome to buy using interactive menu
  */
 async function promptOutcomeChoice(
   tokens: Array<{ token_id: string; outcome: string; price: number }>
@@ -315,46 +316,116 @@ async function promptOutcomeChoice(
   const tokensWithPrices = await fetchCurrentPrices(tokens);
 
   return new Promise((resolve) => {
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout,
+    // Create a temporary screen for the selection menu
+    const screen = blessed.screen({
+      smartCSR: true,
+      fullUnicode: true,
+      warnings: false,
     });
 
-    console.log("\n📊 Available outcomes to buy:");
-    tokensWithPrices.forEach((token, index) => {
-      const price = token.price > 0 ? `($${token.price.toFixed(4)})` : "";
-      console.log(`  ${index + 1}. ${token.outcome} ${price}`);
+    // Create a box for the title
+    const titleBox = blessed.box({
+      top: 1,
+      left: "center",
+      width: "shrink",
+      height: 1,
+      content: "📊 Select outcome to buy",
+      style: {
+        fg: "white",
+        bold: true,
+      },
     });
 
-    rl.question(
-      "\n👉 Which outcome do you want to buy? (enter number): ",
-      (answer) => {
-        rl.close();
+    // Create list items with prices
+    const items = tokensWithPrices.map((token, index) => {
+      const price = token.price > 0 ? `$${token.price.toFixed(4)}` : "N/A";
+      return `${token.outcome.padEnd(20)} ${price}`;
+    });
 
-        const choice = parseInt(answer.trim());
-        if (
-          !isNaN(choice) &&
-          choice >= 1 &&
-          choice <= tokensWithPrices.length
-        ) {
-          const selected = tokensWithPrices[choice - 1];
-          console.log(`\n✅ Selected: ${selected.outcome}\n`);
-          resolve({
-            tokenId: selected.token_id,
-            outcome: selected.outcome,
-          });
-        } else {
-          // Default to first token if invalid choice
-          console.log(
-            `\n⚠️  Invalid choice, defaulting to: ${tokensWithPrices[0].outcome}\n`
-          );
-          resolve({
-            tokenId: tokensWithPrices[0].token_id,
-            outcome: tokensWithPrices[0].outcome,
-          });
-        }
-      }
-    );
+    // Calculate list height
+    const listHeight = Math.min(items.length + 2, 15);
+
+    // Create the list
+    const list = blessed.list({
+      top: 3,
+      left: "center",
+      width: 50,
+      height: listHeight,
+      keys: true,
+      vi: true,
+      mouse: true,
+      items: items,
+      style: {
+        selected: {
+          bg: "blue",
+          fg: "white",
+          bold: true,
+        },
+        item: {
+          fg: "white",
+        },
+      },
+      border: {
+        type: "line",
+      },
+    });
+
+    // Add instructions
+    const instructions = blessed.box({
+      top: 3 + listHeight + 1,
+      left: "center",
+      width: "shrink",
+      height: 3,
+      content: "↑/↓: Navigate  |  Enter: Select  |  q/ESC: Cancel",
+      style: {
+        fg: "gray",
+      },
+    });
+
+    // Handle selection
+    list.on("select", (item: any, index: number) => {
+      const selected = tokensWithPrices[index];
+      screen.destroy();
+      console.log(`\n✅ Selected: ${selected.outcome}\n`);
+      resolve({
+        tokenId: selected.token_id,
+        outcome: selected.outcome,
+      });
+    });
+
+    // Handle cancel (q or ESC)
+    list.key(["q", "escape"], () => {
+      screen.destroy();
+      // Default to first token on cancel
+      const selected = tokensWithPrices[0];
+      console.log(`\n⚠️  Cancelled, defaulting to: ${selected.outcome}\n`);
+      resolve({
+        tokenId: selected.token_id,
+        outcome: selected.outcome,
+      });
+    });
+
+    // Append to screen
+    screen.append(titleBox);
+    screen.append(list);
+    screen.append(instructions);
+
+    // Focus the list
+    list.focus();
+
+    // Render
+    screen.render();
+
+    // Handle screen exit
+    screen.key(["q", "escape", "C-c"], () => {
+      screen.destroy();
+      const selected = tokensWithPrices[0];
+      console.log(`\n⚠️  Cancelled, defaulting to: ${selected.outcome}\n`);
+      resolve({
+        tokenId: selected.token_id,
+        outcome: selected.outcome,
+      });
+    });
   });
 }
 
