@@ -134,6 +134,11 @@ export class PolymarketWebSocketClient {
   }
 
   private handleBookMessage(message: BookMessage): void {
+    // Only process messages for the token we subscribed to
+    if (message.asset_id !== this.tokenId) {
+      return;
+    }
+
     // Handle both 'bids'/'asks' and 'buys'/'sells' field names
     // (documentation shows both formats)
     const bidData = (message as any).bids || (message as any).buys || [];
@@ -215,6 +220,11 @@ export class PolymarketWebSocketClient {
   private handlePriceChange(message: PriceChangeMessage): void {
     // Update order book levels based on price changes
     for (const change of message.price_changes) {
+      // Only process price changes for the token we subscribed to
+      if (change.asset_id !== this.tokenId) {
+        continue;
+      }
+
       const price = parseFloat(change.price);
       const size = parseFloat(change.size);
 

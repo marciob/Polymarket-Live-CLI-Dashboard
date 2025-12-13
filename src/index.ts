@@ -387,11 +387,11 @@ async function promptOutcomeChoice(
     list.on("select", (item: any, index: number) => {
       const selected = tokensWithPrices[index];
       screen.destroy();
-      console.log(`\n✅ Selected: ${selected.outcome}\n`);
-      resolve({
-        tokenId: selected.token_id,
-        outcome: selected.outcome,
-      });
+          console.log(`\n✅ Selected: ${selected.outcome}\n`);
+          resolve({
+            tokenId: selected.token_id,
+            outcome: selected.outcome,
+          });
     });
 
     // Handle cancel (q or ESC)
@@ -422,11 +422,11 @@ async function promptOutcomeChoice(
       screen.destroy();
       const selected = tokensWithPrices[0];
       console.log(`\n⚠️  Cancelled, defaulting to: ${selected.outcome}\n`);
-      resolve({
+          resolve({
         tokenId: selected.token_id,
         outcome: selected.outcome,
       });
-    });
+          });
   });
 }
 
@@ -596,10 +596,10 @@ async function main(): Promise<void> {
           : "";
       console.log(`\n✅ Strategy will buy: ${outcome}${priceDisplay}\n`);
     } else {
-      // Multiple tokens available - prompt user to choose
-      const choice = await promptOutcomeChoice(allTokens);
-      selectedTokenId = choice.tokenId;
-      selectedOutcome = choice.outcome;
+    // Multiple tokens available - prompt user to choose
+    const choice = await promptOutcomeChoice(allTokens);
+    selectedTokenId = choice.tokenId;
+    selectedOutcome = choice.outcome;
     }
   } else if (allTokens.length === 1) {
     // Only one token, fetch current price and use it

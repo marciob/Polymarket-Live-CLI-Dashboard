@@ -22,19 +22,17 @@ export class PortfolioTracker {
 
   /**
    * Update current market prices from order book
+   * Uses best bid price for current value calculation
    */
   updatePrices(tokenId: string, orderBook: OrderBook): void {
-    // Use midpoint price if available, otherwise best bid/ask
-    let price = 0.5; // Default midpoint
+    // Use best bid price (highest bid) for current value calculation
+    let price = 0; // Default to 0 if no bids
 
-    if (orderBook.bids.length > 0 && orderBook.asks.length > 0) {
-      const bestBid = orderBook.bids[0]?.price || 0;
-      const bestAsk = orderBook.asks[0]?.price || 1;
-      price = (bestBid + bestAsk) / 2;
+    if (orderBook.bids.length > 0) {
+      price = orderBook.bids[0]?.price || 0; // Best bid is first (sorted descending)
     } else if (orderBook.asks.length > 0) {
+      // Fallback to ask if no bids available
       price = orderBook.asks[0].price;
-    } else if (orderBook.bids.length > 0) {
-      price = orderBook.bids[0].price;
     }
 
     this.currentPrices.set(tokenId, price);

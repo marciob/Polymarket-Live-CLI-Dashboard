@@ -88,20 +88,17 @@ export class StrategySimulator {
     // Store current order book for execution
     this.currentOrderBook = orderBook;
 
-    // Calculate current price (midpoint)
-    let currentPrice = 0.5;
+    // Use best bid price for current value calculation
     const bestBid = orderBook.bids[0]?.price || 0;
     const bestAsk = orderBook.asks[0]?.price || 1;
 
-    if (orderBook.bids.length > 0 && orderBook.asks.length > 0) {
-      currentPrice = (bestBid + bestAsk) / 2;
-    } else if (orderBook.asks.length > 0) {
-      currentPrice = bestAsk;
-    } else if (orderBook.bids.length > 0) {
-      currentPrice = bestBid;
-    }
-
-    // Update portfolio with current price
+    // Update portfolio with best bid price (for current value calculation)
+    const currentPrice =
+      orderBook.bids.length > 0
+        ? bestBid
+        : orderBook.asks.length > 0
+        ? bestAsk
+        : 0.5;
     this.portfolio.setPrice(tokenId, currentPrice);
 
     // Update context if we have one

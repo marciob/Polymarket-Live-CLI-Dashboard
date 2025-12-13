@@ -5,9 +5,13 @@
 
 import { PortfolioSnapshot } from "../../portfolio/types";
 
-export function formatPortfolio(portfolio: PortfolioSnapshot): string {
+export function formatPortfolio(
+  portfolio: PortfolioSnapshot,
+  currentPrice?: number,
+  outcome?: string
+): string {
   const header = buildPortfolioHeader();
-  const summary = buildPortfolioSummary(portfolio);
+  const summary = buildPortfolioSummary(portfolio, currentPrice, outcome);
   const positions = buildPositionsList(portfolio);
 
   return header + summary + positions;
@@ -20,7 +24,11 @@ function buildPortfolioHeader(): string {
   );
 }
 
-function buildPortfolioSummary(portfolio: PortfolioSnapshot): string {
+function buildPortfolioSummary(
+  portfolio: PortfolioSnapshot,
+  currentPrice?: number,
+  outcome?: string
+): string {
   const aggregatedPositions = aggregatePositionsByOutcome(portfolio.positions);
 
   // Calculate total cost from aggregated positions
@@ -54,6 +62,12 @@ function buildPortfolioSummary(portfolio: PortfolioSnapshot): string {
   // Add a blank line at the top to prevent "first-line" rendering bugs in blessed
   // which were causing decimal points to be eaten or text to be corrupted.
   summary += `${pad("")}\n`;
+
+  // Always display current bid price (shows 0 if no bids)
+  const outcomeLabel = outcome ? ` (${outcome})` : "";
+  summary += `${pad(
+    `  Current Bid Price: $${fmt(currentPrice ?? 0)}${outcomeLabel}`
+  )}\n`;
 
   summary += `${pad(`  Total Cost:       ${fmt(displayTotalCost)} USDC`)}\n`;
   summary += `${pad(

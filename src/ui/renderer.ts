@@ -92,7 +92,7 @@ export class DashboardUI {
       this.updateTradesPanel(trades, simulatedTrades);
       this.updateSimulatedTradesPanel(simulatedTrades);
       this.updateOrderBookPanel(orderBook);
-      this.updatePortfolioPanel(portfolio);
+      this.updatePortfolioPanel(portfolio, orderBook, trades);
       this.render();
     } catch (error) {
       // Silently ignore update errors
@@ -149,9 +149,21 @@ export class DashboardUI {
     this.orderBookBox.setContent(formatOrderBook(orderBook, this.outcome));
   }
 
-  private updatePortfolioPanel(portfolio?: PortfolioSnapshot): void {
+  private updatePortfolioPanel(
+    portfolio?: PortfolioSnapshot,
+    orderBook?: OrderBook,
+    trades?: Trade[]
+  ): void {
     if (portfolio) {
-      this.portfolioBox.setContent(formatPortfolio(portfolio));
+      // Show the best bid price (highest bid) for the selected outcome
+      // Show 0 if there are no bids
+      let currentPrice: number = 0;
+      if (orderBook && orderBook.bids.length > 0) {
+        currentPrice = orderBook.bids[0]?.price || 0; // Best bid is first (sorted descending)
+      }
+      this.portfolioBox.setContent(
+        formatPortfolio(portfolio, currentPrice, this.outcome)
+      );
     }
   }
 
