@@ -2,6 +2,8 @@
  * Strategy types and interfaces
  */
 
+import { PriceHistory } from "./history";
+
 export interface StrategyContext {
   tokenId: string;
   marketName: string;
@@ -10,6 +12,7 @@ export interface StrategyContext {
   bestBid: number;
   bestAsk: number;
   timestamp: number;
+  history?: PriceHistory; // Optional: historical price data
 }
 
 export interface SimulatedTrade {
@@ -38,4 +41,3 @@ export interface StrategyResult {
     tokenId?: string; // Optional, will use context tokenId if not provided
   };
 }
-

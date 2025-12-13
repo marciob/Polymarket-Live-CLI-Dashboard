@@ -7,6 +7,7 @@ import { BaseStrategy } from "../strategy/base";
 import { StrategyContext, SimulatedTrade } from "../strategy/types";
 import { PortfolioTracker } from "../portfolio/portfolio";
 import { OrderBook } from "../types";
+import { PriceHistory } from "../strategy/history";
 
 export interface SimulatorConfig {
   initialCapital?: number; // Starting capital (for reference, not enforced)
@@ -22,6 +23,7 @@ export class StrategySimulator {
   private currentContext: StrategyContext | null = null;
   private currentOrderBook: OrderBook | null = null;
   private tradeCallbacks: Array<(trade: SimulatedTrade) => void> = [];
+  private priceHistory: PriceHistory;
 
   constructor(config: SimulatorConfig = {}) {
     this.config = {
@@ -29,6 +31,7 @@ export class StrategySimulator {
       ...config,
     };
     this.portfolio = new PortfolioTracker();
+    this.priceHistory = new PriceHistory(1000); // Keep last 1000 price points
   }
 
   /**
@@ -101,6 +104,12 @@ export class StrategySimulator {
         : 0.5;
     this.portfolio.setPrice(tokenId, currentPrice);
 
+    // Update price history
+    if (bestBid > 0 || bestAsk > 0) {
+      const price = bestAsk > 0 ? bestAsk : bestBid;
+      this.priceHistory.add(price, bestBid, bestAsk, Date.now());
+    }
+
     // Update context if we have one
     if (this.currentContext) {
       this.currentContext = {
@@ -109,6 +118,7 @@ export class StrategySimulator {
         bestBid,
         bestAsk,
         timestamp: Date.now(),
+        history: this.priceHistory, // Include history in context
       };
     }
   }

@@ -9,6 +9,8 @@ import { DashboardUI } from "./ui/renderer";
 import { Trade, OrderBook } from "./types";
 import { StrategySimulator } from "./simulator/simulator";
 import { PollBuyStrategy } from "./strategy/poll-buy-strategy";
+import { StrategyRegistry } from "./strategy/registry";
+import { BaseStrategy } from "./strategy/base";
 
 function httpsGet(url: string): Promise<string> {
   return new Promise((resolve, reject) => {
@@ -387,11 +389,11 @@ async function promptOutcomeChoice(
     list.on("select", (item: any, index: number) => {
       const selected = tokensWithPrices[index];
       screen.destroy();
-          console.log(`\n✅ Selected: ${selected.outcome}\n`);
-          resolve({
-            tokenId: selected.token_id,
-            outcome: selected.outcome,
-          });
+      console.log(`\n✅ Selected: ${selected.outcome}\n`);
+      resolve({
+        tokenId: selected.token_id,
+        outcome: selected.outcome,
+      });
     });
 
     // Handle cancel (q or ESC)
@@ -422,18 +424,174 @@ async function promptOutcomeChoice(
       screen.destroy();
       const selected = tokensWithPrices[0];
       console.log(`\n⚠️  Cancelled, defaulting to: ${selected.outcome}\n`);
-          resolve({
+      resolve({
         tokenId: selected.token_id,
         outcome: selected.outcome,
       });
-          });
+    });
+  });
+}
+
+/**
+ * Prompt user to choose which strategy to use
+ */
+async function promptStrategyChoice(): Promise<{
+  strategyName: string;
+  strategy: BaseStrategy;
+}> {
+  const availableStrategies = StrategyRegistry.getAll();
+
+  if (availableStrategies.length === 0) {
+    throw new Error("No strategies available");
+  }
+
+  return new Promise((resolve) => {
+    // Create a temporary screen for the selection menu
+    const screen = blessed.screen({
+      smartCSR: true,
+      fullUnicode: true,
+      warnings: false,
+    });
+
+    // Create a box for the title
+    const titleBox = blessed.box({
+      top: 1,
+      left: "center",
+      width: "shrink",
+      height: 1,
+      content: "🎯 Select strategy to test",
+      style: {
+        fg: "white",
+        bold: true,
+      },
+    });
+
+    // Create list items with descriptions
+    const items = availableStrategies.map((strategy) => {
+      const name = strategy.name.padEnd(20);
+      const desc = strategy.description || "No description";
+      return `${name} - ${desc}`;
+    });
+
+    // Calculate list height
+    const listHeight = Math.min(items.length + 2, 15);
+
+    // Create the list
+    const list = blessed.list({
+      top: 3,
+      left: "center",
+      width: 70,
+      height: listHeight,
+      keys: true,
+      vi: true,
+      mouse: true,
+      items: items,
+      style: {
+        selected: {
+          bg: "blue",
+          fg: "white",
+          bold: true,
+        },
+        item: {
+          fg: "white",
+        },
+      },
+      border: {
+        type: "line",
+      },
+    });
+
+    // Add instructions
+    const instructions = blessed.box({
+      top: 3 + listHeight + 1,
+      left: "center",
+      width: "shrink",
+      height: 3,
+      content: "↑/↓: Navigate  |  Enter: Select  |  q/ESC: Cancel",
+      style: {
+        fg: "gray",
+      },
+    });
+
+    // Handle selection
+    list.on("select", (item: any, index: number) => {
+      const selected = availableStrategies[index];
+      screen.destroy();
+      console.log(`\n✅ Selected strategy: ${selected.name}\n`);
+
+      // Create strategy instance with default config
+      const strategy = StrategyRegistry.create(selected.name, {
+        enabled: true,
+      });
+
+      if (!strategy) {
+        throw new Error(`Failed to create strategy: ${selected.name}`);
+      }
+
+      resolve({
+        strategyName: selected.name,
+        strategy,
+      });
+    });
+
+    // Handle cancel (q or ESC)
+    list.key(["q", "escape"], () => {
+      screen.destroy();
+      // Default to first strategy on cancel
+      const selected = availableStrategies[0];
+      console.log(`\n⚠️  Cancelled, defaulting to: ${selected.name}\n`);
+
+      const strategy = StrategyRegistry.create(selected.name, {
+        enabled: true,
+      });
+
+      if (!strategy) {
+        throw new Error(`Failed to create strategy: ${selected.name}`);
+      }
+
+      resolve({
+        strategyName: selected.name,
+        strategy,
+      });
+    });
+
+    // Append to screen
+    screen.append(titleBox);
+    screen.append(list);
+    screen.append(instructions);
+
+    // Focus the list
+    list.focus();
+
+    // Render
+    screen.render();
+
+    // Handle screen exit
+    screen.key(["q", "escape", "C-c"], () => {
+      screen.destroy();
+      const selected = availableStrategies[0];
+      console.log(`\n⚠️  Cancelled, defaulting to: ${selected.name}\n`);
+
+      const strategy = StrategyRegistry.create(selected.name, {
+        enabled: true,
+      });
+
+      if (!strategy) {
+        throw new Error(`Failed to create strategy: ${selected.name}`);
+      }
+
+      resolve({
+        strategyName: selected.name,
+        strategy,
+      });
+    });
   });
 }
 
 function printUsage(): void {
   console.log(`
-Polymarket Live Dashboard
-═════════════════════════
+Polymarket Strategy Simulator
+═════════════════════════════
 
 Usage:
   npm start -- <url_or_token_id>
@@ -442,14 +600,20 @@ Usage:
 Examples:
   # Paste a Polymarket URL directly! 🎉
   npm start -- "https://polymarket.com/event/bitcoin-up-or-down-on-december-8"
-  
+
   # Select specific outcome from multi-outcome markets:
   npm start -- "https://polymarket.com/event/fed-decision-in-december" --outcome "25 bps decrease"
   npm start -- "fed-decision-in-december" --outcome 2  # Select by number (1, 2, 3...)
-  
+
+  # Select specific strategy (skips interactive selection):
+  npm start -- "https://polymarket.com/event/btc-updown-15m-1765596600" --strategy PollBuy
+
+  # Combine flags:
+  npm start -- "https://polymarket.com/event/btc-updown-15m-1765596600" --outcome "Up" --strategy PollBuy
+
   # Or use a market slug
   npm start -- "bitcoin-up-or-down-on-december-8"
-  
+
   # Or use a token ID directly
   npm start -- 71321045679252212594626385532706912750332728571942532289631379312455583992563
 
@@ -495,13 +659,19 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  // Parse arguments for --outcome flag
+  // Parse arguments for --outcome and --strategy flags
   let input = args[0];
   let outcomeSelector: string | undefined;
+  let strategySelector: string | undefined;
 
   const outcomeIndex = args.indexOf("--outcome");
   if (outcomeIndex !== -1 && outcomeIndex + 1 < args.length) {
     outcomeSelector = args[outcomeIndex + 1];
+  }
+
+  const strategyIndex = args.indexOf("--strategy");
+  if (strategyIndex !== -1 && strategyIndex + 1 < args.length) {
+    strategySelector = args[strategyIndex + 1];
   }
 
   let tokenId: string;
@@ -578,7 +748,42 @@ async function main(): Promise<void> {
     tokenId = input;
   }
 
-  // Prompt user to choose which outcome to buy (if we have multiple tokens)
+  // STEP 1: Select strategy FIRST (before outcome selection)
+  let selectedStrategy: BaseStrategy;
+  let selectedStrategyName: string;
+
+  if (strategySelector) {
+    // Strategy specified via CLI flag
+    const strategyDef = StrategyRegistry.get(strategySelector);
+    if (!strategyDef) {
+      console.error(`\n❌ Error: Strategy "${strategySelector}" not found.`);
+      console.error(`\nAvailable strategies:`);
+      StrategyRegistry.getAll().forEach((s) => {
+        console.error(`  - ${s.name}: ${s.description}`);
+      });
+      process.exit(1);
+    }
+
+    // Create strategy with placeholder config (will update with token/outcome later)
+    const strategy = StrategyRegistry.create(strategySelector, {
+      enabled: true,
+    });
+
+    if (!strategy) {
+      throw new Error(`Failed to create strategy: ${strategySelector}`);
+    }
+
+    selectedStrategy = strategy;
+    selectedStrategyName = strategySelector;
+    console.log(`\n✅ Using strategy: ${selectedStrategyName}\n`);
+  } else {
+    // Prompt user to select strategy FIRST
+    const strategyChoice = await promptStrategyChoice();
+    selectedStrategyName = strategyChoice.strategyName;
+    selectedStrategy = strategyChoice.strategy;
+  }
+
+  // STEP 2: Select outcome (if needed)
   let selectedTokenId = tokenId;
   let selectedOutcome = outcome;
 
@@ -596,10 +801,10 @@ async function main(): Promise<void> {
           : "";
       console.log(`\n✅ Strategy will buy: ${outcome}${priceDisplay}\n`);
     } else {
-    // Multiple tokens available - prompt user to choose
-    const choice = await promptOutcomeChoice(allTokens);
-    selectedTokenId = choice.tokenId;
-    selectedOutcome = choice.outcome;
+      // Multiple tokens available - prompt user to choose
+      const choice = await promptOutcomeChoice(allTokens);
+      selectedTokenId = choice.tokenId;
+      selectedOutcome = choice.outcome;
     }
   } else if (allTokens.length === 1) {
     // Only one token, fetch current price and use it
@@ -621,22 +826,25 @@ async function main(): Promise<void> {
   tokenId = selectedTokenId;
   outcome = selectedOutcome;
 
+  // Update strategy config with final token/outcome (recreate if needed)
+  // This ensures strategies that need tokenId/outcome get them
+  const strategyWithConfig = StrategyRegistry.create(selectedStrategyName, {
+    enabled: true,
+    targetTokenId: selectedTokenId,
+    targetOutcome: selectedOutcome,
+  });
+
+  if (strategyWithConfig) {
+    selectedStrategy = strategyWithConfig;
+  }
+
   // Initialize Strategy Simulator
   const simulator = new StrategySimulator({
     evaluationIntervalMs: 1000, // Evaluate strategies every second
   });
 
-  // Add Poll Buy Strategy (buys every 15 seconds)
-  const pollBuyStrategy = new PollBuyStrategy({
-    name: "PollBuy",
-    enabled: true,
-    intervalSeconds: 15,
-    buySize: 1.0, // Buy 1 share each time
-    targetTokenId: selectedTokenId,
-    targetOutcome: selectedOutcome,
-  });
-
-  simulator.addStrategy(pollBuyStrategy);
+  // Add selected strategy
+  simulator.addStrategy(selectedStrategy);
 
   // Initialize WebSocket client
   let ui: DashboardUI | null = null;
